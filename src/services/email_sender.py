@@ -87,7 +87,7 @@ class EmailSender:
             bcc = valid_bcc
         
         # Set from email and name
-        sender_email = from_email or self.settings.DEFAULT_FROM_EMAIL or self.settings.SMTP_USERNAME
+        sender_email = from_email or self.settings.DEFAULT_FROM_EMAIL
         sender_name = from_name or self.settings.DEFAULT_FROM_NAME
         
         if not sender_email:
@@ -214,15 +214,24 @@ class EmailSender:
             sender: Sender email address
             recipients: List of recipient email addresses
         """
-        smtp_config = {
-            "hostname": self.settings.SMTP_SERVER,
-            "port": self.settings.SMTP_PORT,
-            "username": self.settings.SMTP_USERNAME,
-            "password": self.settings.SMTP_PASSWORD,
-        }
-        
-        if self.settings.SMTP_USE_TLS:
-            smtp_config["use_tls"] = True
-        
-        async with aiosmtplib.SMTP(**smtp_config) as smtp:
-            await smtp.send_message(message, sender=sender, recipients=recipients)
+        # Port 465 requires SSL, port 587 requires STARTTLS
+        if self.settings.SMTP_PORT == 465:
+            # Direct SSL connection for port 465
+            async with aiosmtplib.SMTP(
+                hostname=self.settings.SMTP_SERVER,
+                port=self.settings.SMTP_PORT,
+                username=self.settings.SMTP_USERNAME,
+                password=self.settings.SMTP_PASSWORD,
+                use_tls=True
+            ) as smtp:
+                await smtp.send_message(message, sender=sender, recipients=recipients)
+        else:
+            # STARTTLS for port 587
+            async with aiosmtplib.SMTP(
+                hostname=self.settings.SMTP_SERVER,
+                port=self.settings.SMTP_PORT,
+                username=self.settings.SMTP_USERNAME,
+                password=self.settings.SMTP_PASSWORD,
+                start_tls=True if self.settings.SMTP_USE_TLS else False
+            ) as smtp:
+                await smtp.send_message(message, sender=sender, recipients=recipients)
