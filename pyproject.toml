@@ -16,6 +16,7 @@ dependencies = [
     "aiosmtplib>=3.0.0",
     "aioimaplib>=1.0.0",
     "email-validator>=2.0.0",
+    "dotenv>=0.9.9",
 ]
 
 [project.optional-dependencies]

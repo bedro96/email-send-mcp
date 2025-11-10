@@ -25,8 +25,8 @@ def create_server() -> FastMCP:
     @mcp.tool()
     async def send_email(
         recipient: str,
-        subject: str,
         body: str,
+        subject: str = " Message from MCP Email Server",
         attachments: Optional[List[str]] = None,
         cc: Optional[List[str]] = None,
         bcc: Optional[List[str]] = None,
