@@ -11,9 +11,9 @@ COPY . /app
 ENV PATH="/app/.venv/bin:$PATH"
 ENV CI=true
 
-# Add NodeSource repository for Node.js 18
+# Add NodeSource repository for Node.js 22
 RUN apt update && apt install -y curl
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 
 # Install nodejs
 RUN apt install -y nodejs
@@ -22,6 +22,5 @@ RUN apt install -y nodejs
 RUN uv sync
 
 # Set default command to run the script
-#CMD ["python", "fastmcp_azure_entra_id_authentication.py"]
 ENTRYPOINT ["uv", "run"]
 CMD ["main.py"]

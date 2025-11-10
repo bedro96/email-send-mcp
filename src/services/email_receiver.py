@@ -5,6 +5,7 @@ Email receiving service using IMAP and POP3.
 import aioimaplib
 import asyncio
 import email
+import email.message
 from email.header import decode_header
 from typing import List, Dict, Any, Optional
 import poplib
@@ -72,7 +73,9 @@ class EmailReceiver:
             
             emails = []
             for email_id in email_ids:
-                email_data = await self._fetch_email_imap(imap, email_id)
+                # Convert bytes to string for aioimaplib
+                email_id_str = email_id.decode() if isinstance(email_id, bytes) else str(email_id)
+                email_data = await self._fetch_email_imap(imap, email_id_str)
                 if email_data:
                     emails.append(email_data)
             
@@ -94,7 +97,7 @@ class EmailReceiver:
     async def _fetch_email_imap(
         self,
         imap: aioimaplib.IMAP4_SSL,
-        email_id: bytes
+        email_id: str
     ) -> Optional[Dict[str, Any]]:
         """
         Fetch a single email via IMAP.
@@ -107,15 +110,29 @@ class EmailReceiver:
             Dictionary with email data or None
         """
         try:
-            response = await imap.fetch(email_id, "(RFC822)")
+            # Use RFC822 to fetch the complete message
+            response = await imap.fetch(email_id, "RFC822")
             
             if response[0] != "OK":
                 return None
             
-            email_body = response[1][0][1]
+            # Extract email body from response
+            # Based on our testing, the message is in response[1][1]
+            if len(response[1]) >= 2:
+                email_body = response[1][1]
+            elif len(response[1]) >= 1:
+                email_body = response[1][0]
+            else:
+                return None
+            
+            # Convert to bytes if needed
+            if isinstance(email_body, str):
+                email_body = email_body.encode()
+            
+            # Parse the email message
             email_message = email.message_from_bytes(email_body)
             
-            return self._parse_email(email_message, email_id.decode())
+            return self._parse_email(email_message, email_id)
             
         except Exception as e:
             return None
