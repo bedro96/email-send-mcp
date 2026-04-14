@@ -45,14 +45,23 @@ Perfect for integration with AI assistants like [Claude Desktop](https://claude.
 - ✅ TLS/SSL encryption for all connections
 - ✅ Secure credential management via environment variables
 
+### 🛡️ API Key Authentication
+- ✅ `x-api-key` header-based authentication via ASGI middleware
+- ✅ Case-insensitive header key matching (`X-Api-Key`, `x-api-key`, etc.)
+- ✅ Production mode enforces authentication; Development mode bypasses it
+- ✅ `/api/health` endpoint is always public (no auth required)
+- ✅ Configurable via `MODE` and `X-API-KEY` environment variables
+
 ## 📋 Table of Contents
 
 - [Quick Start](#-quick-start)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
+- [Authentication](#-authentication)
 - [MCP Tools (Functions)](#-mcp-tools-functions)
 - [Usage Examples](#-usage-examples)
 - [Testing](#-testing)
+- [Smoke Test Results](#-smoke-test-results)
 - [Integration with MCP Clients](#-integration-with-mcp-clients)
 - [Docker Deployment](#-docker-deployment)
 - [Architecture](#-architecture)
@@ -168,6 +177,12 @@ MAX_ATTACHMENT_SIZE_MB=25
 # Server Configuration
 LOG_LEVEL=INFO
 DEBUG=false
+
+# Mode: Development (auth bypassed) or Production (auth enforced)
+MODE=Production
+
+# API Key for x-api-key header authentication
+X-API-KEY=your-strong-api-key-here
 ```
 
 ### Step 2: Email Provider Setup
@@ -249,6 +264,45 @@ For configuration details for Outlook, Yahoo, ProtonMail, iCloud, and custom SMT
 5. **Store secrets securely** in production (Azure Key Vault, AWS Secrets Manager, etc.)
 6. **Rotate passwords regularly** and revoke unused app passwords
 7. **Limit permissions** to only what's necessary
+
+## 🛡️ Authentication
+
+The server uses `x-api-key` header-based authentication controlled by the `MODE` environment variable.
+
+### How It Works
+
+| `MODE` value | Behaviour |
+|---|---|
+| `Production` | Every request to `/mcp` must include a valid `x-api-key` header |
+| `Development` (default) | Authentication is **bypassed** — all requests are allowed |
+
+The `/api/health` endpoint is **always public** regardless of mode.
+
+### Header Rules
+
+- **Key matching is case-insensitive**: `x-api-key`, `X-Api-Key`, `X-API-KEY` are all accepted.
+- **Value matching is exact**: the provided value must match `X-API-KEY` in `.env` exactly (case-sensitive).
+
+### Configuration
+
+```env
+# .env
+MODE=Production          # or Development
+X-API-KEY=your-strong-secret-key
+```
+
+### Testing Authentication
+
+```bash
+# Without key (Production mode) → 401
+curl https://<host>/mcp
+
+# With correct key → 200 / normal MCP response
+curl -H "x-api-key: your-strong-secret-key" https://<host>/mcp
+
+# Health check — always works without a key
+curl https://<host>/api/health
+```
 
 ## 🛠️ MCP Tools (Functions)
 
@@ -858,6 +912,53 @@ jobs:
       - name: Upload coverage
         uses: codecov/codecov-action@v3
 ```
+
+## 🔬 Smoke Test Results
+
+Live smoke test performed against the production Azure Container Apps deployment:
+
+**Production URL:** `https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io`
+
+### Test: Unauthenticated request (expect 401)
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" \
+  https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io/mcp
+# → 401
+```
+
+### Test: Authenticated email send
+
+```bash
+curl -s -X POST \
+  https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io/mcp \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $X_API_KEY" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "send_email",
+      "arguments": {
+        "recipient": "kunhoko@kakao.com",
+        "subject": "Smoke testing",
+        "body": "Do you see this message! It is test message from Github Copilot"
+      }
+    }
+  }'
+```
+
+### Results
+
+| Test | Expected | Result |
+|---|---|---|
+| `GET /api/health` (no key) | `200 {"status":"ok"}` | ✅ Pass |
+| `POST /mcp` without `x-api-key` | `401 Unauthorized` | ✅ Pass |
+| `POST /mcp` with wrong `x-api-key` | `401 Unauthorized` | ✅ Pass |
+| `POST /mcp` with correct `x-api-key` (send email) | `200` + email delivered | ✅ Pass |
+
+> Email successfully delivered to `kunhoko@kakao.com` with subject **"Smoke testing"** and body **"Do you see this message! It is test message from Github Copilot"**.
 
 ## 🔌 Integration with MCP Clients
 

@@ -3,8 +3,37 @@ import os
 import sys
 import dotenv
 import logging
+from starlette.middleware import Middleware
+from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.responses import JSONResponse
 from src.server import create_server
 from src.config import get_settings
+
+
+class APIKeyMiddleware:
+    """ASGI middleware that enforces x-api-key authentication in Production mode."""
+
+    def __init__(self, app: ASGIApp, api_key: str, mode: str) -> None:
+        self.app = app
+        self.api_key = api_key
+        self.mode = mode
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            # Health check is always public
+            if path != "/api/health" and self.mode.lower() == "production":
+                raw_headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
+                normalized = {k.decode().lower(): v.decode() for k, v in raw_headers}
+                provided_key = normalized.get("x-api-key", "")
+                if provided_key != self.api_key:
+                    response = JSONResponse(
+                        {"error": "Unauthorized", "detail": "Invalid or missing x-api-key header"},
+                        status_code=401,
+                    )
+                    await response(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)
 
 # ===== 로깅 설정 =====
 def setup_logging():
@@ -92,8 +121,14 @@ def main():
             logger.error("SMTP credentials not configured. Email will not work.")
             print("Warning: SMTP credentials not configured. Email sending may not work.", file=sys.stderr)
         
+        mode = settings.MODE
+        api_key = settings.X_API_KEY
+        logger.info(f"Running in {mode} mode. Authentication {'enforced' if mode.lower() == 'production' else 'bypassed'}.")
+
+        middleware = [Middleware(APIKeyMiddleware, api_key=api_key, mode=mode)]
+
         # Run the FastMCP server (handles asyncio internally)
-        server.run(transport="http", host="0.0.0.0", port=8888, path="/mcp")
+        server.run(transport="http", host="0.0.0.0", port=8888, path="/mcp", middleware=middleware)
             
     except Exception as e:
         logger.error(f"Failed to start server: {str(e)}")

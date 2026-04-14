@@ -41,12 +41,17 @@ class Settings(BaseSettings):
     DEFAULT_FROM_EMAIL: str = Field(default="")
     DEFAULT_FROM_NAME: str = Field(default="MCP Email Server")
     MAX_ATTACHMENT_SIZE_MB: int = Field(default=25)
-    
+
+    # Server mode and authentication
+    MODE: str = Field(default="Development")
+    X_API_KEY: str = Field(default="", validation_alias="X-API-KEY")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore"
+        extra="ignore",
+        populate_by_name=True,
     )
     
     @field_validator("SMTP_PORT", "IMAP_PORT", "POP3_PORT")
