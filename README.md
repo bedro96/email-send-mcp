@@ -919,20 +919,35 @@ Live smoke test performed against the production Azure Container Apps deployment
 
 **Production URL:** `https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io`
 
-### Test: Unauthenticated request (expect 401)
+### How to Run the Tests
 
+**Test A — Unauthenticated request (expect 401 after deployment):**
 ```bash
-curl -s -o /dev/null -w "%{http_code}" \
-  https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io/mcp
-# → 401
-```
-
-### Test: Authenticated email send
-
-```bash
-curl -s -X POST \
+curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
   https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+# Expected: HTTP 401
+```
+
+**Test B — Wrong API key (expect 401):**
+```bash
+curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
+  https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "x-api-key: wrongkey" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+# Expected: HTTP 401
+```
+
+**Test C — Authenticated send_email (expect 200 + delivery):**
+```bash
+curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
+  https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -H "x-api-key: $X_API_KEY" \
   -d '{
     "jsonrpc": "2.0",
@@ -947,18 +962,48 @@ curl -s -X POST \
       }
     }
   }'
+# Expected: HTTP 200, email delivered
 ```
 
-### Results
+**Test D — Health check (always public, expect 200):**
+```bash
+curl -s -w "\nHTTP_STATUS:%{http_code}" \
+  https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io/api/health
+# Expected: HTTP 200 {"status":"ok"}
+```
 
-| Test | Expected | Result |
-|---|---|---|
-| `GET /api/health` (no key) | `200 {"status":"ok"}` | ✅ Pass |
-| `POST /mcp` without `x-api-key` | `401 Unauthorized` | ✅ Pass |
-| `POST /mcp` with wrong `x-api-key` | `401 Unauthorized` | ✅ Pass |
-| `POST /mcp` with correct `x-api-key` (send email) | `200` + email delivered | ✅ Pass |
+**Test E — Case-insensitive header key (expect 200):**
+```bash
+curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
+  https://email-send-mcp.victoriousdune-f6c83ffa.koreacentral.azurecontainerapps.io/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-Api-Key: $X_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+# Expected: HTTP 200 (mixed-case key accepted)
+```
 
-> Email successfully delivered to `kunhoko@kakao.com` with subject **"Smoke testing"** and body **"Do you see this message! It is test message from Github Copilot"**.
+### Results (commit [2fbb904](https://github.com/bedro96/email-send-mcp/commit/2fbb904))
+
+| Test | Expected | HTTP | Status | Notes |
+|---|---|---|---|---|
+| D — `GET /api/health` (no key) | `200 {"status":"ok"}` | 200 | ✅ Pass | Always public |
+| C — Authenticated `send_email` | 200 + email delivered | 200 | ✅ Pass | Email confirmed delivered to `kunhoko@kakao.com` |
+| A — No `x-api-key` header | 401 | — | ⏳ Pending | Awaiting new image deployment |
+| B — Wrong `x-api-key` value | 401 | — | ⏳ Pending | Awaiting new image deployment |
+| E — Mixed-case `X-Api-Key` header | 200 | — | ⏳ Pending | Awaiting new image deployment |
+
+> **Note:** Tests A, B, and E require the new Docker image (containing the auth middleware) to be deployed.
+> The GitHub Actions CI/CD pipeline needs a federated identity credential added for
+> `repo:bedro96/email-send-mcp:ref:refs/heads/main` in the Azure tenant where `kunhoregistry.azurecr.io`
+> and `azureaiagent-rg` reside. Once deployed, all three tests are expected to pass.
+
+### Confirmed email delivery
+
+Email successfully delivered to `kunhoko@kakao.com`:
+- **Subject:** Smoke testing
+- **Body:** Do you see this message! It is test message from Github Copilot
+- **Sent via:** SMTP (Kakao Mail)
 
 ## 🔌 Integration with MCP Clients
 
