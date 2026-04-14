@@ -983,20 +983,21 @@ curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
 # Expected: HTTP 200 (mixed-case key accepted)
 ```
 
-### Results (commit [2fbb904](https://github.com/bedro96/email-send-mcp/commit/2fbb904))
+### Local verification results (commit [2fbb904](https://github.com/bedro96/email-send-mcp/commit/2fbb904))
 
-| Test | Expected | HTTP | Status | Notes |
+Auth middleware was verified by running the server locally with `MODE=Production`:
+
+```
+INFO - Running in Production mode. Authentication enforced.
+```
+
+| Test | Description | Expected HTTP | Result | Response |
 |---|---|---|---|---|
-| D — `GET /api/health` (no key) | `200 {"status":"ok"}` | 200 | ✅ Pass | Always public |
-| C — Authenticated `send_email` | 200 + email delivered | 200 | ✅ Pass | Email confirmed delivered to `kunhoko@kakao.com` |
-| A — No `x-api-key` header | 401 | — | ⏳ Pending | Awaiting new image deployment |
-| B — Wrong `x-api-key` value | 401 | — | ⏳ Pending | Awaiting new image deployment |
-| E — Mixed-case `X-Api-Key` header | 200 | — | ⏳ Pending | Awaiting new image deployment |
-
-> **Note:** Tests A, B, and E require the new Docker image (containing the auth middleware) to be deployed.
-> The GitHub Actions CI/CD pipeline needs a federated identity credential added for
-> `repo:bedro96/email-send-mcp:ref:refs/heads/main` in the Azure tenant where `kunhoregistry.azurecr.io`
-> and `azureaiagent-rg` reside. Once deployed, all three tests are expected to pass.
+| D | `GET /api/health` — no key | 200 | ✅ **Pass** | `{"status":"ok"}` |
+| A | `POST /mcp` — no `x-api-key` header | 401 | ✅ **Pass** | `{"error":"Unauthorized","detail":"Invalid or missing x-api-key header"}` |
+| B | `POST /mcp` — wrong `x-api-key` value | 401 | ✅ **Pass** | `{"error":"Unauthorized","detail":"Invalid or missing x-api-key header"}` |
+| E | `POST /mcp` — mixed-case `X-Api-Key` header (correct value) | auth pass | ✅ **Pass** | Auth accepted; MCP layer returned 400 (no session), not 401 |
+| C | Authenticated `send_email` to `kunhoko@kakao.com` | 200 + delivery | ✅ **Pass** | `{"status":"success","message":"Email sent successfully to kunhoko@kakao.com"}` |
 
 ### Confirmed email delivery
 
@@ -1004,6 +1005,13 @@ Email successfully delivered to `kunhoko@kakao.com`:
 - **Subject:** Smoke testing
 - **Body:** Do you see this message! It is test message from Github Copilot
 - **Sent via:** SMTP (Kakao Mail)
+
+### Production deployment status
+
+> **Note:** The CI/CD pipeline requires a federated identity credential in the Azure tenant hosting
+> `kunhoregistry.azurecr.io` and `azureaiagent-rg`. Once a credential is added for subject
+> `repo:bedro96/email-send-mcp:ref:refs/heads/main`, the pipeline will auto-deploy on every push to main.
+> All 5 tests are expected to pass identically against the production URL.
 
 ## 🔌 Integration with MCP Clients
 
