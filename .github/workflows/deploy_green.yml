@@ -1,0 +1,150 @@
+name: Deploy Green Revision to Azure Container Apps
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  REGISTRY_NAME: kunhoregistry
+  IMAGE_NAME: email-send-mcp
+  ACR_RESOURCE_GROUP: fastcmp-rg
+  CONTAINER_APP_RESOURCE_GROUP: azureaiagent-rg
+  CONTAINER_APP_NAME: email-send-mcp
+  # CONTAINER_APP_ENV: email-send-mcpenv
+  # LOG_ANALYTICS_WORKSPACE: workspaceazureaiagentr7154
+  # Bottoms are original values.
+  AZURE_CORE_OUTPUT: none
+  # RESOURCE_GROUP: my-rg
+  # CONTAINER_APP_NAME: my-fastapi-app
+  ACR_NAME: myregistry
+  # IMAGE_NAME: my-fastapi
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy-green:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure containerapp extension
+        run: |
+          az extension add --name containerapp --upgrade
+
+      - name: ACR Login
+        run: |
+          az acr login --name ${{ env.REGISTRY_NAME }}.azurecr.io
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
+      # - name: Build and Push image
+      #   run: |
+      #     IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
+      #     docker build -t "$IMAGE" .
+      #     docker push "$IMAGE"
+      #     echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Ensure multiple revision mode
+        run: |
+          az containerapp revision set-mode \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            --mode multiple
+
+      - name: Label current revision as blue
+        run: |
+          BLUE_REVISION=$(az containerapp revision list \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            --query "sort_by([?properties.active==\`true\`], &properties.createdTime)[-1].name" \
+            -o tsv)
+
+          echo "Labeling current revision as blue: $BLUE_REVISION"
+          az containerapp revision label add \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            --label blue \
+            --revision $BLUE_REVISION \
+            --yes
+
+      - name: Deploy new revision
+        run: |
+          az containerapp update \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            --image ${{ steps.meta.outputs.tags }}
+
+      - name: Get latest revision name
+        run: |
+          LATEST_REVISION=$(az containerapp revision list \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            --query "[?properties.active==\`true\`] | sort_by(@,&properties.createdTime)[-1].name" \
+            -o tsv)
+
+          echo "LATEST_REVISION=$LATEST_REVISION" >> $GITHUB_ENV
+          echo "Latest revision: $LATEST_REVISION"
+
+      - name: Attach green label to latest revision
+        run: |
+          az containerapp revision label add \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            --label green \
+            --revision $LATEST_REVISION \
+            --yes
+
+      - name: Keep production traffic on blue
+        run: |
+          az containerapp ingress traffic set \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            --label-weight blue=100 green=0
+
+      - name: Show traffic config
+        run: |
+          az containerapp ingress traffic show \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            -o table
+
+      - name: Show green URL hint
+        run: |
+          echo "Green revision deployed."
+          echo "Test green using the label-based FQDN from Azure Portal / Labels view."
