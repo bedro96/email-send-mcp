@@ -60,6 +60,7 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,enable=true,prefix=sha-                  # ← 추가: sha-a1b2c3d4 형태
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -105,10 +106,11 @@ jobs:
 
       - name: Deploy new revision
         run: |
+          IMAGE="${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:sha-$(echo ${{ github.sha }} | cut -c1-7)"
           az containerapp update \
             --name $CONTAINER_APP_NAME \
             --resource-group $CONTAINER_APP_RESOURCE_GROUP \
-            --image ${{ steps.meta.outputs.tags }}
+            --image "$IMAGE"
 
       - name: Get latest revision name
         run: |
