@@ -132,6 +132,17 @@ jobs:
             --revision $LATEST_REVISION \
             --yes
 
+      - name: Get green URL
+        run: |
+          FQDN=$(az containerapp show \
+            --name $CONTAINER_APP_NAME \
+            --resource-group $CONTAINER_APP_RESOURCE_GROUP \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+
+          GREEN_URL="https://${{ env.CONTAINER_APP_NAME }}--green.${FQDN#*.}"
+          echo "GREEN_URL=$GREEN_URL" >> $GITHUB_ENV
+          echo "Green URL: $GREEN_URL"
+
       - name: Keep production traffic on blue
         run: |
           az containerapp ingress traffic set \
@@ -150,3 +161,13 @@ jobs:
         run: |
           echo "Green revision deployed."
           echo "Test green using the label-based FQDN from Azure Portal / Labels view."
+
+      - name: Send Slack notification
+        if: ${{ secrets.SLACK_WEBHOOK_URL }}
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: |
+            {
+              "text": "Green revision deployed for *${{ env.CONTAINER_APP_NAME }}*\nTest URL: ${{ env.GREEN_URL }}\nCommit: `${{ github.sha }}`"
+            }
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
