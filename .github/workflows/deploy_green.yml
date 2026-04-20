@@ -19,7 +19,7 @@ env:
   AZURE_CORE_OUTPUT: none
   # RESOURCE_GROUP: my-rg
   # CONTAINER_APP_NAME: my-fastapi-app
-  ACR_NAME: myregistry
+  # ACR_NAME: myregistry
   # IMAGE_NAME: my-fastapi
   IMAGE_TAG: ${{ github.sha }}
 
