@@ -139,7 +139,8 @@ jobs:
             --resource-group $CONTAINER_APP_RESOURCE_GROUP \
             --query "properties.configuration.ingress.fqdn" -o tsv)
 
-          GREEN_URL="https://${{ env.CONTAINER_APP_NAME }}--green.${FQDN#*.}"
+          DOMAIN=${FQDN#*.}
+          GREEN_URL="https://${CONTAINER_APP_NAME}--green.${DOMAIN}"
           echo "GREEN_URL=$GREEN_URL" >> $GITHUB_ENV
           echo "Green URL: $GREEN_URL"
 
@@ -163,10 +164,10 @@ jobs:
           echo "Test green using the label-based FQDN from Azure Portal / Labels view."
 
       - name: Send Slack notification
-        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
-        uses: slackapi/slack-github-action@v1.23.0
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v2.0.0
         with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {
