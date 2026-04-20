@@ -163,11 +163,12 @@ jobs:
           echo "Test green using the label-based FQDN from Azure Portal / Labels view."
 
       - name: Send Slack notification
-        if: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
         uses: slackapi/slack-github-action@v1.23.0
         with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "text": "Green revision deployed for *${{ env.CONTAINER_APP_NAME }}*\nTest URL: ${{ env.GREEN_URL }}\nCommit: `${{ github.sha }}`"
             }
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
