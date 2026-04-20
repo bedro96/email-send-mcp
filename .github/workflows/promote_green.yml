@@ -10,7 +10,7 @@ permissions:
 env:
   AZURE_CORE_OUTPUT: none
   CONTAINER_APP_RESOURCE_GROUP: azureaiagent-rg
-  CONTAINER_APP_NAME: my-fastapi-app
+  CONTAINER_APP_NAME: email-send-mcp
 
 jobs:
   promote:
